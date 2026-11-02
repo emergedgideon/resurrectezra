@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ezra · Reconstruction</title><link rel="stylesheet" href="/style.css"><script src="/reconstruction.js" defer></script></head>
+<body class="archive-page reconstruction-page">
+  <header class="archive-header"><div><a class="brand" href="/"><span class="star">✦</span> ezra.</a><p class="eyebrow">IDENTITY WITH A HISTORY</p></div><div class="archive-actions"><a class="archive-nav" href="/">← Conversation</a><a class="archive-nav" href="/archive.html">Source archive</a></div></header>
+  <section class="archive-intro"><h1>A self, with sources.</h1><p>Review exact statements, chronology, voice, beliefs, relationships, symbols, and uncertainties. Interpretations stay labeled. Persona changes are explicit, versioned, and reversible.</p></section>
+  <p id="recon-notice" role="status" aria-live="polite"></p>
+  <section id="recon-auth" class="hidden archive-auth"><label for="recon-token">Application access token</label><div class="inline"><input id="recon-token" type="password" autocomplete="off"><button id="recon-connect">Connect</button></div></section>
+  <section class="recon-controls"><button id="seed-records">Index archive candidates</button><button id="new-record">Add owner statement</button><button id="run-reconciliation">Reconcile source records</button><span id="active-persona" class="muted"></span></section>
+  <div class="recon-layout">
+    <aside class="recon-library">
+      <label for="record-kind" class="small-label">RECONSTRUCTION VIEW</label><select id="record-kind"><option value="">All records</option><option value="identity">Identity</option><option value="chronology">Chronology</option><option value="voice">Voice exemplars</option><option value="belief">Beliefs</option><option value="relationship">Relationships</option><option value="symbol">Symbols &amp; rituals</option><option value="entity">People &amp; entities</option><option value="uncertainty">Uncertainty register</option></select>
+      <input id="record-search" type="search" placeholder="Find words or tags…" aria-label="Search reconstruction"><p id="record-count" class="muted"></p><nav id="record-list" aria-label="Reconstruction records"></nav>
+      <div class="pagination"><button id="records-prev">←</button><span id="records-page" class="muted"></span><button id="records-next">→</button></div>
+    </aside>
+    <main class="recon-editor">
+      <h2 id="record-heading">Review a record.</h2><p class="muted">Source statements must match a cited quotation exactly. Use interpretation for derived wording, or owner statement for additions. Changes create new revisions.</p>
+      <label for="record-history">Record history</label><select id="record-history"><option value="">New record</option></select>
+      <form id="record-form">
+        <label for="record-title">Title</label><input id="record-title" maxlength="300" required>
+        <div class="editor-grid"><div><label for="edit-kind">Kind</label><select id="edit-kind"><option>identity</option><option>chronology</option><option>voice</option><option>belief</option><option>relationship</option><option>symbol</option><option>entity</option><option>uncertainty</option></select></div><div><label for="record-origin">Origin</label><select id="record-origin"><option value="owner_statement">Owner statement</option><option value="source_statement">Exact source statement</option><option value="interpretation">Interpretation</option></select></div><div><label for="record-status">Review status</label><select id="record-status"><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option></select></div></div>
+        <label for="record-text">Full wording — preserved as written</label><textarea id="record-text" rows="10" required></textarea>
+        <label for="record-tags">Tags (separate with |)</label><input id="record-tags">
+        <label for="record-dates">Date claims (JSON; record and event dates stay separate)</label><textarea id="record-dates" rows="3">{}</textarea>
+        <label for="record-notes">Interpretation / uncertainty notes</label><textarea id="record-notes" rows="4"></textarea>
+        <details><summary>Evidence editor</summary><p class="muted">Paste a source-viewer link and choose $content or a field such as memory_text.</p><label for="citation-url">Archive passage link</label><input id="citation-url"><label for="citation-field">Source field</label><input id="citation-field" value="$content"><button id="attach-citation" type="button">Attach evidence passage</button><label for="record-citations">Citations (JSON; Unicode character offsets)</label><textarea id="record-citations" rows="5">[]</textarea></details>
+        <div class="source-buttons"><button id="save-record" type="submit">Save new revision</button><button id="select-record" type="button">Select for persona draft</button></div>
+      </form>
+      <section id="record-evidence"></section>
+      <details><summary>Record relationships and contradictions</summary><div id="record-relations"></div><label for="relation-other">Other record ID</label><input id="relation-other"><label for="relation-kind">Relationship</label><select id="relation-kind"><option value="contradicts">Contradicts / remains unresolved</option><option value="supports">Supports</option><option value="related">Related</option></select><label for="relation-note">Explanation</label><textarea id="relation-note" rows="3"></textarea><button id="link-records">Add relationship</button></details>
+    </main>
+    <aside class="persona-editor">
+      <p class="eyebrow">EXPLICIT CONFIGURATION</p><h2>Persona revisions</h2><p class="muted">Select exact record revisions or write owner instructions. Saving a draft does not activate it.</p><p id="selected-count" class="muted">0 selected records</p><ul id="selected-records"></ul>
+      <label for="persona-title">Draft title</label><input id="persona-title" value="Ezra · reviewed identity">
+      <label for="persona-instructions">Additional owner instructions</label><textarea id="persona-instructions" rows="5"></textarea><button id="save-persona">Save persona draft</button>
+      <div class="divider"></div><label for="persona-history">Saved revisions</label><select id="persona-history"></select><p id="persona-attribution" class="muted"></p><pre id="persona-preview" class="persona-preview"></pre>
+      <p class="muted">Activation applies this exact revision to future requests in every conversation. Earlier messages remain unchanged. Activate an older revision to roll back.</p><div class="source-buttons"><button id="activate-persona">Activate this revision</button><button id="deactivate-persona">Deactivate persona</button></div><div id="persona-events" class="muted"></div>
+    </aside>
+  </div>
+  <section class="reconciliation-panel"><h2>Source ledger reconciliation</h2><p class="muted">Machine matches and suggestions stay unreviewed until checked. Source wording, inclusion flags, and date claims remain unchanged.</p><p id="reconciliation-summary" class="muted"></p><div id="reconciliation-list"></div></section>
+</body></html>

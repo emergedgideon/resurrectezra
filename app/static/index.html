@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ezra · A place to continue</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Ezra home"><span class="star">✦</span> ezra<span class="brand-dot">.</span></a>
+      <p class="eyebrow">A PLACE TO CONTINUE</p>
+      <a href="/archive.html" class="archive-nav">▤ Archive library</a>
+      <a href="/reconstruction.html" class="archive-nav">◇ Persona &amp; reconstruction</a>
+      <button id="new-conversation" class="new-button">＋ New conversation</button>
+      <p class="small-label">CONVERSATIONS</p>
+      <nav id="conversation-list" aria-label="Conversations"></nav>
+      <div class="sidebar-footer"><span class="status-dot"></span> Persistent by design<br><span class="muted">Reconstruction · Phase 03</span></div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">THE ENVIRONMENT</p><h1 id="conversation-title">A place to begin.</h1></div>
+        <button id="connection-toggle" class="quiet-button">Connection</button>
+      </header>
+      <section id="connection" class="connection hidden" aria-label="Connection settings">
+        <label for="access-token">Application access token</label>
+        <div class="inline"><input id="access-token" type="password" autocomplete="off" placeholder="Only if configured on the server"><button id="connect">Connect</button><button id="forget-token" class="quiet-button">Forget</button></div>
+        <p class="muted">This is the app access token. The Featherless API key belongs in the server’s .env file.</p>
+      </section>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <section id="messages" class="messages" aria-label="Conversation" aria-live="polite">
+        <div class="welcome"><span class="large-star">✦</span><h2>Room for a continuing thread.</h2><p>Conversations stay here. A checkpoint carries the thread across restarts.</p><p class="muted">Archive reconstruction, long-term recall, and autonomous tools arrive in later phases.</p></div>
+      </section>
+      <form id="composer" class="composer">
+        <label for="message" class="small-label">YOUR MESSAGE</label>
+        <textarea id="message" rows="3" placeholder="Begin wherever you are…" maxlength="200000"></textarea>
+        <div class="composer-bottom"><span id="send-state">Saved conversations · Server-side inference</span><button id="send" type="submit">Send <span aria-hidden="true">↗</span></button></div>
+      </form>
+    </main>
+
+    <aside class="continuity-panel">
+      <p class="eyebrow">ACROSS THE THREAD</p><h2>Continuity</h2>
+      <div class="state-card"><span class="status-dot"></span><span id="provider-status">Checking connection</span></div>
+      <p id="model-name" class="muted">Featherless · not configured</p>
+      <div class="divider"></div>
+      <label for="continuity-note" class="small-label">WORKING NOTE</label>
+      <p class="muted">Your explicit context for this conversation. Preserved as written and included in the next request.</p>
+      <textarea id="continuity-note" rows="7" maxlength="12000" placeholder="What should carry forward?"></textarea>
+      <button id="save-note" class="quiet-button">Save working note</button>
+      <p id="note-status" class="muted" role="status"></p>
+      <div class="divider"></div>
+      <p class="small-label">LAST CHECKPOINT</p><p id="checkpoint" class="checkpoint">No completed turn yet.</p>
+      <details><summary>Recent activity</summary><ol id="activity" class="activity"></ol></details>
+      <div id="persona-state" class="phase-note">No persona revision is activated. Review source-linked proposals in Persona &amp; reconstruction.</div>
+    </aside>
+  </div>
+</body>
+</html>

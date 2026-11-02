@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ezra · Source archive</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/archive.js" defer></script>
+</head>
+<body class="archive-page">
+  <header class="archive-header">
+    <div><a class="brand" href="/"><span class="star">✦</span> ezra<span class="brand-dot">.</span></a><p class="eyebrow">THE SOURCE ARCHIVE</p></div>
+    <div class="archive-actions"><a class="archive-nav" href="/">← Conversation</a><a class="archive-nav" href="/reconstruction.html">Persona &amp; reconstruction</a><button id="export-archive">Export verified archive</button></div>
+  </header>
+  <section class="archive-intro"><h1>A history, preserved.</h1><p>Original files stay unchanged. Extracted text, OCR, and parser warnings remain separate. Importing a document does not activate its instructions.</p></section>
+  <div id="archive-notice" role="status" aria-live="polite"></div>
+  <section id="archive-auth" class="hidden archive-auth">
+    <label for="archive-token">Application access token</label>
+    <div class="inline"><input id="archive-token" type="password" autocomplete="off"><button id="archive-connect">Connect</button></div>
+  </section>
+  <section class="upload-panel" aria-label="Add files">
+    <div><label for="archive-files" class="small-label">ADD TO THE ARCHIVE</label><p class="muted">CSV, Markdown, plain text, PDF, Word, and images · Up to 32 MiB each · Local extraction and OCR</p></div>
+    <div class="upload-controls"><input id="archive-files" type="file" multiple accept=".csv,.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.bmp"><button id="upload-files">Import files</button></div>
+    <p id="upload-status" class="muted" role="status" aria-live="polite"></p>
+  </section>
+  <details class="restore-panel"><summary>Restore archive backup</summary><p class="muted">For a new cloud workspace: upload a verified archive ZIP. Restore is allowed only into an empty archive/reconstruction workspace. It preserves original bytes and does not change conversations or credentials.</p><label for="restore-file">Archive backup ZIP</label><input id="restore-file" type="file" accept=".zip"><button id="restore-archive">Restore into empty archive</button></details>
+  <div class="archive-layout">
+    <aside class="archive-library">
+      <label for="archive-filter" class="small-label">LIBRARY</label><input id="archive-filter" type="search" placeholder="Filter filenames…">
+      <p id="archive-count" class="muted"></p><nav id="source-list" aria-label="Archive sources"></nav>
+      <details class="manifest-panel"><summary id="manifest-summary">Manifest references</summary><p class="muted">Matched by exact filename; related exports remain separate sources.</p><ul id="manifest-missing"></ul></details>
+    </aside>
+    <main class="source-viewer">
+      <div id="source-empty" class="welcome"><span class="large-star">✦</span><h2>Open a source.</h2><p>Inspect its original, extraction, and place in the archive.</p></div>
+      <section id="source-content" class="hidden">
+        <h2 id="source-name"></h2><p id="source-metadata" class="muted"></p><p id="source-hash" class="source-hash"></p>
+        <div class="source-buttons"><button id="download-original">Download original</button><button id="reprocess-source">Reprocess / retry</button></div>
+        <div id="source-job" class="muted" role="status"></div>
+        <label for="extraction-revision" class="small-label">EXTRACTION REVISION</label><select id="extraction-revision"></select>
+        <p id="extractor-name" class="muted"></p><ul id="source-warnings" class="source-warnings"></ul>
+        <div id="preview-panel" class="hidden"><p id="preview-label" class="small-label"></p><img id="source-preview" alt="Rendered source page or image"><p id="preview-error" class="muted"></p></div>
+        <div class="units-toolbar"><h3>Extracted passages</h3><label for="unit-number">Go to passage</label><input id="unit-number" type="number" min="1" value="1"><button id="go-unit">Go</button></div>
+        <div id="source-units"></div>
+        <div class="pagination"><button id="previous-units">← Previous</button><span id="unit-range" class="muted"></span><button id="next-units">Next →</button></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

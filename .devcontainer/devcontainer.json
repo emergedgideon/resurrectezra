@@ -1,0 +1,11 @@
+{
+  "name": "Ezra browser testing",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+  "remoteUser": "vscode",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {"label": "Ezra — private browser app", "onAutoForward": "openBrowser", "protocol": "http"}
+  },
+  "postCreateCommand": "bash .devcontainer/install.sh",
+  "postStartCommand": ".venv/bin/python scripts/start_codespace.py"
+}
