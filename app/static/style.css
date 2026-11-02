@@ -11,3 +11,4 @@
 @media(max-width:650px){.recon-layout{display:block}.recon-library{border-right:0;border-bottom:1px solid var(--line)}#record-list{max-height:250px}main.recon-editor{height:auto;min-height:0;padding:20px}.persona-editor{padding:20px}.editor-grid{grid-template-columns:1fr}.editor-grid label{min-height:0}.recon-controls{margin:20px}.reconciliation-panel{padding:20px}#reconciliation-list{display:block}#reconciliation-list details{margin-bottom:12px}#recon-notice{margin:15px 20px}}
 .restore-panel{margin:0 40px 25px;padding:15px 20px;border:1px solid var(--line);border-radius:8px}.restore-panel label{display:block;font-size:12px;margin:12px 0}.restore-panel input{max-width:400px;font-size:12px;margin:0 10px 12px 0}
 @media(max-width:650px){.restore-panel{margin:0 18px 20px}.restore-panel input{max-width:100%}}
+#record-fields{border:0;padding:0;margin:0;min-width:0}

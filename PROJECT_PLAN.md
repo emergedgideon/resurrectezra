@@ -15,7 +15,7 @@ This is the durable build plan. Read `PROJECT_STATE.md` before continuing work a
 
 ## Technical direction
 
-Owner hosting decision: use a spare 2020 Intel MacBook Air (8 GB RAM, macOS Sonoma 14.3) for private hosting, with Featherless inference. Keep local persistent storage; a free cloud database migration is unnecessary for this route. Installation and iterative updates must accommodate an owner currently using chat only. Workspace tests do not mean software is already installed on the Mac.
+Current hosting decision: **Render + Supabase for browser testing**, with Featherless inference. Codespaces was rejected because of usage limits. PostgreSQL and private object storage must persist cloud data independently of Render's temporary disk. The spare 2020 Intel MacBook Air (8 GB RAM, macOS Sonoma 14.3) is a future always-on project, not current setup. Preserve portable SQLite/file backups for that transfer. The owner works through browser/chat dashboards; do not require command-line administration for normal setup. Workspace tests do not establish a live deployment or completed Mac installation.
 
 Start with FastAPI, a same-origin HTML/CSS/JavaScript interface, SQLite, persistent local files, and an OpenAI-compatible Featherless adapter. This minimizes setup and makes a separately hosted first application concrete. Introduce PostgreSQL/pgvector, a richer frontend, durable workers, object storage, and containers when corresponding phases require them. Keep the archive database separate from conversation runtime state initially. No destructive migration of the existing archive.
 

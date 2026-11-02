@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: ezra-private-browser
+    runtime: python
+    plan: free
+    region: oregon
+    branch: browser-testing
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/start_render.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.12
+      - key: EZRA_DATA_DIR
+        value: /tmp/ezra-cache
+      - key: SUPABASE_STORAGE_BUCKET
+        value: ezra-private
+      - key: FEATHERLESS_API_KEY
+        sync: false
+      - key: FEATHERLESS_MODEL
+        sync: false
+      - key: EZRA_ACCESS_TOKEN
+        sync: false
+      - key: EZRA_DATABASE_URL
+        sync: false
+      - key: EZRA_DATABASE_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

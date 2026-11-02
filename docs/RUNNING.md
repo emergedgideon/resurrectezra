@@ -2,6 +2,8 @@
 
 The application runs on your own machine or server. GitHub stores the source; a Python server runs the interface and API. It does not use ChatGPT hosting.
 
+For the chosen hosted browser version, follow [Render + Supabase setup](RENDER_SUPABASE.md). The local setup below remains available for later Mac deployment and development.
+
 ## Local setup
 
 Use Python 3.11+ on Linux, macOS, or WSL. The single-process database lock currently uses Unix `fcntl`; native Windows is not supported yet.

@@ -2,7 +2,7 @@
 const ui = id => document.getElementById(id);
 let token = sessionStorage.getItem('ezra-access-token') || '';
 let offset = 0, total = 0, queryVersion = 0, recordRequest = 0, personaRequest = 0;
-let record = null, version = null, body = {}, persona = null, report = null, dirty = false;
+let record = null, version = null, body = {}, persona = null, report = null, dirty = false, saving = false;
 const selected = new Map();
 ui('recon-token').value = token;
 function notice(text = '') { ui('recon-notice').textContent = text; }
@@ -67,6 +67,8 @@ function newRecord() {
 ui('record-form').addEventListener('input', () => { dirty = true; });
 ui('record-form').addEventListener('submit', async event => {
   event.preventDefault();
+  if (saving) return;
+  saving = true; ui('save-record').disabled = true;
   try {
     // Textareas expose LF newlines. Retain the exact source string when the displayed
     // wording was not edited, including original CRLF/CR sequences.
@@ -77,6 +79,7 @@ ui('record-form').addEventListener('submit', async event => {
     const value = await api('/reconstruction/records' + (record ? '/' + record.id : ''), {method: record ? 'PUT' : 'POST', body: JSON.stringify({body: updated, expected_revision: record?.current.revision})});
     dirty = false; await openRecord(value.id); notice('Saved as a new attributable revision. Earlier wording remains available.');
   } catch (e) { notice(e.message); }
+  finally { saving = false; ui('save-record').disabled = false; }
 });
 ui('record-history').onchange = () => { if (dirty) { notice('Save changes before opening another revision.'); return; } const item = record?.revisions.find(r => r.id === ui('record-history').value); if (item) fillRecord(item); };
 ui('attach-citation').onclick = safe(async () => {
@@ -130,5 +133,5 @@ let searchTimer; ui('record-search').oninput = () => { clearTimeout(searchTimer)
 ui('records-prev').onclick = safe(async () => { offset = Math.max(0, offset - 30); await loadRecords(); }); ui('records-next').onclick = safe(async () => { offset += 30; await loadRecords(); });
 ui('recon-connect').onclick = () => { token = ui('recon-token').value; sessionStorage.setItem('ezra-access-token', token); start(); };
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-async function start() { try { await loadRecords(); await loadPersonas(); await loadReport(); const id = new URLSearchParams(location.search).get('record'); if (id) await openRecord(id); else newRecord(); ui('recon-auth').classList.add('hidden'); } catch (e) { notice(e.message); } }
+async function start() { ui('record-fields').disabled = true; try { await loadRecords(); await loadPersonas(); await loadReport(); const id = new URLSearchParams(location.search).get('record'); if (id) await openRecord(id); else newRecord(); ui('recon-auth').classList.add('hidden'); ui('record-fields').disabled = false; } catch (e) { notice(e.message); } }
 start();

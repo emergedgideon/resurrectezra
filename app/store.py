@@ -1,6 +1,6 @@
 """Transactional runtime state, separate from the preserved source archive."""
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 import sqlite3
@@ -20,9 +20,10 @@ class Missing(Exception):
 
 
 class Store:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, database=None):
         data_dir.mkdir(parents=True, exist_ok=True)
         self.path = data_dir / 'runtime.sqlite3'
+        self.database = database
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
             db.executescript('''
@@ -54,6 +55,10 @@ class Store:
 
     @contextmanager
     def connect(self):
+        if self.database is not None:
+            with self.database.connect('runtime') as db:
+                yield db
+            return
         db = sqlite3.connect(self.path, timeout=15)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
@@ -67,16 +72,18 @@ class Store:
         db.execute('INSERT INTO events(conversation_id,type,payload_json,created_at) VALUES (?,?,?,?)',
                    (conversation, kind, json.dumps(payload, ensure_ascii=False), now()))
 
-    def recover(self):
+    def recover(self, stale_seconds=0, startup=True):
         # One application process owns this database. Never replay inference automatically.
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            rows = db.execute("SELECT * FROM turns WHERE status='running'").fetchall()
+            cutoff = (datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)).isoformat()
+            rows = db.execute("SELECT * FROM turns WHERE status='running' AND updated_at<=?", (cutoff,)).fetchall()
             for row in rows:
                 db.execute("UPDATE turns SET status='interrupted',error=?,updated_at=? WHERE id=?",
                            ('Server stopped before a complete reply was saved. Retry explicitly.', now(), row['id']))
                 self.event(db, 'turn.interrupted', {'turn_id': row['id']}, row['conversation_id'])
-            self.event(db, 'runtime.started', {'recovered_turns': len(rows)})
+            if startup:
+                self.event(db, 'runtime.started', {'recovered_turns': len(rows)})
             return len(rows)
 
     def create_conversation(self, title):
@@ -156,19 +163,22 @@ class Store:
 
     def record_context(self, turn, model, metadata):
         with self.connect() as db:
-            db.execute('UPDATE turns SET model=?,context_json=? WHERE id=?', (model, json.dumps(metadata), turn['id']))
+            changed = db.execute("UPDATE turns SET model=?,context_json=? WHERE id=? AND status='running' AND attempt=?", (model, json.dumps(metadata), turn['id'], turn['attempt']))
+            if not changed.rowcount:
+                raise Conflict('This attempt no longer owns the turn context.')
             self.event(db, 'context.assembled', {'turn_id': turn['id'], **metadata}, turn['conversation_id'])
 
     def fail(self, turn, error):
         with self.connect() as db:
-            db.execute("UPDATE turns SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'", (error, now(), turn['id']))
-            self.event(db, 'turn.failed', {'turn_id': turn['id'], 'error': error}, turn['conversation_id'])
+            cursor = db.execute("UPDATE turns SET status='failed',error=?,updated_at=? WHERE id=? AND status='running' AND attempt=?", (error, now(), turn['id'], turn['attempt']))
+            if cursor.rowcount:
+                self.event(db, 'turn.failed', {'turn_id': turn['id'], 'error': error}, turn['conversation_id'])
 
     def complete(self, turn, content, model, usage):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT status FROM turns WHERE id=?', (turn['id'],)).fetchone()
-            if row['status'] != 'running':
+            row = db.execute('SELECT status,attempt FROM turns WHERE id=?', (turn['id'],)).fetchone()
+            if row['status'] != 'running' or row['attempt'] != turn['attempt']:
                 raise Conflict('This generation no longer owns the active turn.')
             timestamp = now()
             assistant_id = str(uuid4())

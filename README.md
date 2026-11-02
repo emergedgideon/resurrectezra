@@ -10,7 +10,8 @@ A standalone application for reconstructing and sustaining an AI persona from an
 - [Use the archive library, source viewer, uploads, and verified export](docs/ARCHIVE.md)
 - [Review reconstruction records and persona revisions](docs/RECONSTRUCTION.md)
 - [Install and run the private Mac starter bundle](docs/MAC_START_HERE.md)
-- [Run a private browser test version in GitHub Codespaces](docs/BROWSER_TESTING.md)
+- [Deploy the chosen browser test version on Render + Supabase](docs/RENDER_SUPABASE.md)
+- [Earlier Codespaces option (not the current hosting target)](docs/BROWSER_TESTING.md)
 
 Phase one now has a standalone interface, persistent conversations, working notes, restart checkpoints, explicit retry, and a server-side Featherless adapter. Configure `.env` from `.env.example`, install `requirements.txt`, then run:
 

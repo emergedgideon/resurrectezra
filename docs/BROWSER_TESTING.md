@@ -1,5 +1,7 @@
 # Private browser testing with GitHub Codespaces
 
+**Superseded hosting option.** The owner chose Render + Supabase after considering Codespaces limits. Follow [RENDER_SUPABASE.md](RENDER_SUPABASE.md) for the current deployment. These instructions remain for a deliberately chosen alternative; no Codespaces setup is required now.
+
 Codespaces is the temporary cloud-testing route. It runs the existing Python/SQLite application and exposes a private browser port. It avoids a Render/Supabase migration and does not install the app on the owner's Mac. The code has a devcontainer and automatic startup configuration; creation and testing of the actual user's codespace remain user/account actions.
 
 ## Browser-only setup

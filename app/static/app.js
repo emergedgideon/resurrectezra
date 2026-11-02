@@ -107,6 +107,7 @@ async function initialize() {
     const status = await api('/status');
     $('provider-status').textContent = status.inference_configured ? 'Inference configured' : 'Waiting for server configuration';
     $('model-name').textContent = `Featherless · ${status.model || 'choose a model in .env'}`;
+    $('storage-status').textContent = status.storage_backend === 'supabase' ? 'Persistent cloud storage · Supabase' : 'Persistent local storage';
     $('persona-state').textContent = status.persona_status + '. Automatic archive retrieval is not connected yet.';
     if (!status.inference_configured) notice('Set FEATHERLESS_API_KEY and FEATHERLESS_MODEL in the server’s .env file, restart, then send or retry a message.');
     else notice();

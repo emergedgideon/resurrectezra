@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 import hmac
 import fcntl
@@ -20,6 +21,8 @@ from .inference import Featherless, ProviderError, assemble_context
 from .store import Conflict, Missing, Store
 from .archive import Archive
 from .reconstruction import Reconstruction
+from .database import Postgres, PersistenceError
+from .cloud_storage import SupabaseStorage
 
 
 class ConversationInput(BaseModel):
@@ -62,8 +65,10 @@ class MappingReviewInput(BaseModel):
 
 def create_app(settings=None, provider=None):
     settings = settings or Settings.from_env()
-    store = Store(settings.data_dir)
-    archive = Archive(settings.data_dir)
+    database = Postgres(settings.database_url, settings.database_password) if settings.database_url else None
+    storage = SupabaseStorage(settings.supabase_url, settings.supabase_key, settings.storage_bucket) if database else None
+    store = Store(settings.data_dir, database)
+    archive = Archive(settings.data_dir, database, storage)
     reconstruction = Reconstruction(archive)
     preview_lock = threading.Lock()
     provider = provider or Featherless(settings)
@@ -76,11 +81,25 @@ def create_app(settings=None, provider=None):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise RuntimeError('This runtime database is already open by another server. Use one worker.') from None
-            store.recover()
+            if storage:
+                await asyncio.to_thread(storage.validate_bucket)
+            await asyncio.to_thread(store.recover, settings.timeout + 60 if database else 0)
             archive.start()
+            async def recover_stale_turns():
+                while True:
+                    await asyncio.sleep(30)
+                    try:
+                        await asyncio.to_thread(store.recover, settings.timeout + 60, False)
+                    except PersistenceError:
+                        pass  # Leave durable work untouched while the database is unreachable.
+            sweeper = asyncio.create_task(recover_stale_turns()) if database else None
             try:
                 yield
             finally:
+                if sweeper:
+                    sweeper.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await sweeper
                 await asyncio.to_thread(archive.close)
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
@@ -127,6 +146,14 @@ def create_app(settings=None, provider=None):
     async def conflict_handler(request, exc):
         return JSONResponse(status_code=409, content={'detail': str(exc)})
 
+    @app.exception_handler(PersistenceError)
+    async def persistence_handler(request, exc):
+        return JSONResponse(status_code=503, content={'detail': str(exc)})
+
+    @app.get('/healthz')
+    async def health():
+        return {'status': 'ok'}
+
     protected = [Depends(authorize)]
 
     @app.exception_handler(ValueError)
@@ -135,13 +162,14 @@ def create_app(settings=None, provider=None):
 
     @app.get('/api/status', dependencies=protected)
     async def status():
-        active = reconstruction.active()
+        active = await asyncio.to_thread(reconstruction.active)
         return {'phase': 3, 'provider': 'Featherless', 'model': settings.model or None,
                 'inference_configured': bool(settings.api_key and settings.model),
                 'authentication_enabled': bool(settings.access_token),
                 'context_characters': settings.context_characters,
                 'persona_status': 'Activated: ' + active['title'] if active else 'Archive persona not yet activated',
                 'persona_revision_id': active['id'] if active else None,
+                'storage_backend': 'supabase' if database else 'local',
                 'tools_connected': False}
 
     @app.post('/api/reconstruction/bootstrap', dependencies=protected)
@@ -237,7 +265,7 @@ def create_app(settings=None, provider=None):
 
     @app.get('/api/archive/sources/{sha}/original', dependencies=protected)
     async def archive_original(sha: str):
-        source, path = archive.original(sha)
+        source, path = await asyncio.to_thread(archive.original, sha)
         return FileResponse(path, filename=source['filename'], media_type='application/octet-stream', content_disposition_type='attachment')
 
     def preview_image(sha, page):
@@ -298,52 +326,61 @@ def create_app(settings=None, provider=None):
         return FileResponse(path, filename='ezra-archive.zip', media_type='application/zip',
                             background=BackgroundTask(path.unlink, missing_ok=True))
 
+    @app.get('/api/backup', dependencies=protected)
+    async def full_backup():
+        try:
+            path = await asyncio.to_thread(archive.export, store)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return FileResponse(path, filename='ezra-full-backup.zip', media_type='application/zip',
+                            background=BackgroundTask(path.unlink, missing_ok=True))
+
     @app.get('/api/conversations', dependencies=protected)
     async def conversations():
-        return store.list_conversations()
+        return await asyncio.to_thread(store.list_conversations)
 
     @app.post('/api/conversations', dependencies=protected, status_code=201)
     async def create_conversation(body: ConversationInput):
         if not body.title.strip():
             raise HTTPException(422, 'A conversation title cannot be blank.')
-        return store.create_conversation(body.title)
+        return await asyncio.to_thread(store.create_conversation, body.title)
 
     @app.get('/api/conversations/{conversation_id}', dependencies=protected)
     async def conversation(conversation_id: UUID):
-        return store.detail(str(conversation_id))
+        return await asyncio.to_thread(store.detail, str(conversation_id))
 
     @app.put('/api/conversations/{conversation_id}/continuity', dependencies=protected)
     async def update_continuity(conversation_id: UUID, body: NoteInput):
-        return store.note(str(conversation_id), body.content)
+        return await asyncio.to_thread(store.note, str(conversation_id), body.content)
 
     async def generate(turn):
         try:
-            detail = store.detail(turn['conversation_id'])
-            persona = reconstruction.active()
+            detail = await asyncio.to_thread(store.detail, turn['conversation_id'])
+            persona = await asyncio.to_thread(reconstruction.active)
             messages, metadata = assemble_context(detail, turn['id'], settings.context_characters, persona)
-            store.record_context(turn, settings.model, metadata)
+            await asyncio.to_thread(store.record_context, turn, settings.model, metadata)
             content, usage = await provider.complete(messages)
-            store.complete(turn, content, settings.model, usage)
+            await asyncio.to_thread(store.complete, turn, content, settings.model, usage)
         except ProviderError as exc:
-            store.fail(turn, str(exc))
+            await asyncio.to_thread(store.fail, turn, str(exc))
         except asyncio.CancelledError:
-            store.fail(turn, 'The request was interrupted. Retry the saved turn explicitly.')
+            await asyncio.to_thread(store.fail, turn, 'The request was interrupted. Retry the saved turn explicitly.')
             raise
         except Exception:
             # Preserve the user's message without exposing response bodies or secrets.
-            store.fail(turn, 'The generation could not be completed. Your message is saved; retry explicitly.')
-        return store.detail(turn['conversation_id'])
+            await asyncio.to_thread(store.fail, turn, 'The generation could not be completed. Your message is saved; retry explicitly.')
+        return await asyncio.to_thread(store.detail, turn['conversation_id'])
 
     @app.post('/api/conversations/{conversation_id}/turns', dependencies=protected)
     async def send(conversation_id: UUID, body: TurnInput):
         if not body.content.strip():
             raise HTTPException(422, 'A message cannot be blank.')
-        turn, claimed = store.claim(str(conversation_id), str(body.request_id), body.content)
-        return await generate(turn) if claimed else store.detail(str(conversation_id))
+        turn, claimed = await asyncio.to_thread(store.claim, str(conversation_id), str(body.request_id), body.content)
+        return await generate(turn) if claimed else await asyncio.to_thread(store.detail, str(conversation_id))
 
     @app.post('/api/conversations/{conversation_id}/turns/{turn_id}/retry', dependencies=protected)
     async def retry(conversation_id: UUID, turn_id: UUID):
-        turn = store.retry(str(conversation_id), str(turn_id))
+        turn = await asyncio.to_thread(store.retry, str(conversation_id), str(turn_id))
         return await generate(turn)
 
     static = Path(__file__).resolve().parent / 'static'

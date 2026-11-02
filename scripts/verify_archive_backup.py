@@ -12,6 +12,15 @@ def verify(path):
     with zipfile.ZipFile(path) as bundle:
         manifest = json.loads(bundle.read('manifest.json'))
         with tempfile.TemporaryDirectory(prefix='ezra-backup-check-') as directory:
+            if 'runtime_sha256' in manifest:
+                runtime = bundle.read('runtime.sqlite3')
+                if hashlib.sha256(runtime).hexdigest() != manifest['runtime_sha256']:
+                    raise ValueError('Conversation database checksum mismatch.')
+                runtime_path = Path(directory) / 'runtime.sqlite3'
+                runtime_path.write_bytes(runtime)
+                with sqlite3.connect(runtime_path) as runtime_db:
+                    if runtime_db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or runtime_db.execute('PRAGMA foreign_key_check').fetchall():
+                        raise ValueError('Conversation database integrity check failed.')
             snapshot = Path(directory) / 'archive.sqlite3'
             snapshot.write_bytes(bundle.read('archive.sqlite3'))
             with sqlite3.connect(snapshot) as db:

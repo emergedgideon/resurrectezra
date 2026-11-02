@@ -36,6 +36,8 @@ Limits: 32 MiB uploads; 60 seconds per OCR invocation; 180 seconds per file extr
 
 ## Export and backup validation
 
+Cloud deployments use PostgreSQL for records and private Supabase objects for originals. Downloads and previews verify their disposable local cache; losing that cache does not remove authoritative data. Archive export remains a portable SQLite/file ZIP in either backend. **Full backup** additionally includes the conversation database, with a checksum in the manifest, and excludes credentials. Use it for complete data preservation and eventual Mac transfer; archive-only restore does not merge conversation databases.
+
 **Export verified archive** snapshots SQLite, verifies cataloged original checksums, and downloads a ZIP with `archive.sqlite3`, `manifest.json`, and `originals/<sha256>`. Sources, aliases, jobs, extraction revisions, and locations are included. Export stops on missing or corrupted originals. It excludes conversations, credentials, `.env`, and unrelated files: this is an archive backup, not a full application backup.
 
 Developers can verify an export without extracting or executing it:

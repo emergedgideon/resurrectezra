@@ -171,6 +171,17 @@ el('restore-archive').addEventListener('click', async () => {
   } catch (error) { tell(error.message); }
   finally { el('restore-archive').disabled = false; }
 });
+el('export-all').addEventListener('click', async () => {
+  el('export-all').disabled = true; tell('Preparing a full backup, including conversations…');
+  try {
+    const response = await fetch('/api/backup', {headers: archiveToken ? {Authorization: 'Bearer ' + archiveToken} : {}});
+    if (!response.ok) { let body = {}; try { body = await response.json(); } catch {} throw new Error(body.detail || 'Full backup failed.'); }
+    const url = URL.createObjectURL(await response.blob()); const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = 'ezra-full-backup.zip'; document.body.append(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000); tell('Full backup downloaded: archive, originals, persona state, and conversations. Credentials are excluded.');
+  } catch (error) { tell(error.message); }
+  finally { el('export-all').disabled = false; }
+});
 el('reprocess-source').addEventListener('click', async () => {
   try { await request(`/sources/${selectedSource}/reprocess`, {method: 'POST'}); await refreshCatalog(); await openSource(selectedSource, pageOffset, selectedRun); tell('Queued. Existing extraction remains available; the new revision will appear when complete.'); }
   catch (error) { tell(error.message); }

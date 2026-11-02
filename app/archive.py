@@ -1,6 +1,6 @@
 """Additive archive catalog, durable jobs, versioned extraction, and export."""
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import hashlib
 import json
 from pathlib import Path
@@ -22,11 +22,13 @@ def timestamp():
 
 
 class Archive:
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, database=None, storage=None):
         self.root = Path(data_dir)
         self.originals = self.root / 'originals'
         self.originals.mkdir(parents=True, exist_ok=True)
         self.path = self.root / 'archive.sqlite3'
+        self.database = database
+        self.storage = storage
         self.stop = threading.Event()
         self.thread = None
         with self.connect() as db:
@@ -78,6 +80,10 @@ class Archive:
 
     @contextmanager
     def connect(self):
+        if self.database is not None:
+            with self.database.connect('archive') as db:
+                yield db
+            return
         db = sqlite3.connect(self.path, timeout=20)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
@@ -111,6 +117,8 @@ class Archive:
     def original(self, sha):
         source = self.source(sha)
         path = self.originals / source['sha256']
+        if self.storage is not None:
+            self.storage.cache(source['sha256'], path)
         if not path.is_file():
             raise Missing('Original file is missing from storage. Restore it from backup.')
         if hashlib.sha256(path.read_bytes()).hexdigest() != sha:
@@ -139,6 +147,8 @@ class Archive:
                 raise
         sha = digest.hexdigest()
         try:
+            if self.storage is not None:
+                self.storage.put(sha, temp_path)
             target = self.originals / sha
             # Serialize staging and queue changes. File bytes are durable before the job appears.
             with self.connect() as db:
@@ -176,7 +186,9 @@ class Archive:
 
     def recover(self):
         with self.connect() as db:
-            db.execute("UPDATE ingestion_jobs SET status='queued',updated_at=?,error='Resuming after an interrupted process.' WHERE status='processing'", (timestamp(),))
+            cutoff = (datetime.now(timezone.utc) - timedelta(seconds=240 if self.database else 0)).isoformat()
+            db.execute("UPDATE ingestion_jobs SET status='failed',updated_at=?,error='Repeated interrupted extraction. Inspect resource limits before explicitly reprocessing.' WHERE status='processing' AND updated_at<=? AND attempt>=3", (timestamp(), cutoff))
+            db.execute("UPDATE ingestion_jobs SET status='queued',updated_at=?,error='Resuming after an interrupted process.' WHERE status='processing' AND updated_at<=?", (timestamp(), cutoff))
 
     def claim_job(self):
         with self.connect() as db:
@@ -202,6 +214,9 @@ class Archive:
                 raise ValueError('Original checksum mismatch. Restore the original before retrying.')
             with self.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
+                owned = db.execute('SELECT status,attempt FROM ingestion_jobs WHERE id=?', (job['id'],)).fetchone()
+                if owned['status'] != 'processing' or owned['attempt'] != job['attempt']:
+                    return True
                 run = str(uuid4())
                 db.execute('INSERT INTO extraction_runs VALUES(?,?,?,?,?)',
                            (run, job['sha256'], parsed['extractor'], json.dumps(parsed['warnings']), timestamp()))
@@ -213,7 +228,7 @@ class Archive:
         except Exception as exc:
             error = 'Extraction timed out after 180 seconds; original preserved.' if isinstance(exc, subprocess.TimeoutExpired) else str(exc)[:700]
             with self.connect() as db:
-                db.execute("UPDATE ingestion_jobs SET status='failed',error=?,updated_at=? WHERE id=?", (error, timestamp(), job['id']))
+                db.execute("UPDATE ingestion_jobs SET status='failed',error=?,updated_at=? WHERE id=? AND status='processing' AND attempt=?", (error, timestamp(), job['id'], job['attempt']))
         return True
 
     def start(self):
@@ -223,10 +238,12 @@ class Archive:
             while not self.stop.is_set():
                 try:
                     active = self.process_one()
+                    if not active and self.database is not None:
+                        self.recover()
                 except Exception:
                     active = False
                 if not active:
-                    self.stop.wait(0.4)
+                    self.stop.wait(3 if self.database else 0.4)
         self.thread = threading.Thread(target=work, name='archive-ingestion', daemon=True)
         self.thread.start()
 
@@ -268,7 +285,7 @@ class Archive:
                 'outstanding': sorted(references - received),
                 'note': 'Filename matches only; similarly named files are not assumed to be replacements.'}
 
-    def export(self):
+    def export(self, runtime_store=None):
         """Consistent SQLite snapshot plus byte-verified originals; excludes runtime secrets."""
         handle = tempfile.NamedTemporaryFile(dir=self.root, prefix='archive-export-', suffix='.zip', delete=False)
         path = Path(handle.name)
@@ -277,7 +294,14 @@ class Archive:
             with tempfile.TemporaryDirectory(dir=self.root) as directory:
                 snapshot = Path(directory) / 'archive.sqlite3'
                 with self.connect() as live, sqlite3.connect(snapshot) as backup:
+                    if runtime_store is not None and self.database is None:
+                        live.execute('BEGIN')
                     live.backup(backup)
+                    if runtime_store is not None:
+                        with runtime_store.connect() as runtime_live, sqlite3.connect(Path(directory) / 'runtime.sqlite3') as runtime_backup:
+                            if runtime_store.database is None:
+                                runtime_live.execute('BEGIN')
+                            runtime_live.backup(runtime_backup)
                 with sqlite3.connect(snapshot) as db:
                     sources = db.execute('SELECT sha256,filename,size_bytes FROM sources ORDER BY sha256').fetchall()
                     integrity = db.execute('PRAGMA integrity_check').fetchone()[0]
@@ -287,12 +311,23 @@ class Archive:
                 with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
                     bundle.write(snapshot, 'archive.sqlite3')
                     for sha, filename, size in sources:
-                        original = self.originals / sha
+                        try:
+                            _, original = self.original(sha)
+                        except (Missing, Conflict):
+                            raise ValueError('An original is missing or failed verification. Export stopped; restore from backup.') from None
                         if not original.is_file() or hashlib.sha256(original.read_bytes()).hexdigest() != sha:
                             raise ValueError('An original is missing or failed verification. Export stopped; restore from backup.')
                         bundle.write(original, 'originals/' + sha)
                         manifest.append({'sha256': sha, 'filename': filename, 'size_bytes': size})
-                    bundle.writestr('manifest.json', json.dumps({'sources': manifest, 'created_at': timestamp(), 'integrity_check': 'ok'}, indent=2))
+                    metadata = {'sources': manifest, 'created_at': timestamp(), 'integrity_check': 'ok'}
+                    if runtime_store is not None:
+                        runtime_path = Path(directory) / 'runtime.sqlite3'
+                        with sqlite3.connect(runtime_path) as runtime_db:
+                            if runtime_db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or runtime_db.execute('PRAGMA foreign_key_check').fetchall():
+                                raise ValueError('Conversation backup verification failed.')
+                        bundle.write(runtime_path, 'runtime.sqlite3')
+                        metadata['runtime_sha256'] = hashlib.sha256(runtime_path.read_bytes()).hexdigest()
+                    bundle.writestr('manifest.json', json.dumps(metadata, indent=2))
             return path
         except BaseException:
             path.unlink(missing_ok=True)
@@ -354,7 +389,7 @@ class Archive:
                         columns = ','.join('"' + c.replace('"', '""') + '"' for c in target_columns)
                         placeholders = ','.join('?' for _ in target_columns)
                         target.executemany(f'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})',
-                                           [tuple(row) for row in source.execute(f'SELECT * FROM "{table}"')])
+                                           [tuple(row) for row in source.execute(f'SELECT * FROM "{table}" ORDER BY rowid')])
                     if target.execute('PRAGMA foreign_key_check').fetchall():
                         raise ValueError('Restored archive has broken references. Nothing was committed.')
                     for name in bundle.namelist():
@@ -370,6 +405,10 @@ class Archive:
                             else:
                                 with destination.open('xb') as output:
                                     output.write(raw)
+                            if self.storage is not None:
+                                self.storage.put(sha, destination)
+                    if self.database is not None:
+                        target.sync_sequences()
                     # An interrupted extraction is safe to resume on the newly restored host.
                     target.execute("UPDATE ingestion_jobs SET status='queued',updated_at=? WHERE status='processing'", (timestamp(),))
             return {**result, 'restored': True, 'note': 'Conversations and credentials were not changed. Restored persona configuration is retained.'}

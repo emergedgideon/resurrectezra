@@ -128,10 +128,10 @@ class Reconstruction:
         identifier = str(uuid5(NAMESPACE_URL, 'ezra:' + seed_key)) if seed_key else str(uuid4())
         with self.archive.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            if seed_key and db.execute('SELECT 1 FROM reconstruction_records WHERE seed_key=?', (seed_key,)).fetchone():
-                return self.record(identifier)
-            db.execute('INSERT INTO reconstruction_records VALUES(?,?,?)', (identifier, seed_key, stamp()))
-            db.execute('INSERT INTO reconstruction_revisions VALUES(?,?,?,?,?,?)', (str(uuid4()), identifier, 1, encode(body), author, stamp()))
+            exists = seed_key and db.execute('SELECT 1 FROM reconstruction_records WHERE seed_key=?', (seed_key,)).fetchone()
+            if not exists:
+                db.execute('INSERT INTO reconstruction_records VALUES(?,?,?)', (identifier, seed_key, stamp()))
+                db.execute('INSERT INTO reconstruction_revisions VALUES(?,?,?,?,?,?)', (str(uuid4()), identifier, 1, encode(body), author, stamp()))
         return self.record(identifier)
 
     def record(self, identifier):

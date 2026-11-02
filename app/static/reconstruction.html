@@ -17,6 +17,7 @@
       <h2 id="record-heading">Review a record.</h2><p class="muted">Source statements must match a cited quotation exactly. Use interpretation for derived wording, or owner statement for additions. Changes create new revisions.</p>
       <label for="record-history">Record history</label><select id="record-history"><option value="">New record</option></select>
       <form id="record-form">
+        <fieldset id="record-fields" disabled>
         <label for="record-title">Title</label><input id="record-title" maxlength="300" required>
         <div class="editor-grid"><div><label for="edit-kind">Kind</label><select id="edit-kind"><option>identity</option><option>chronology</option><option>voice</option><option>belief</option><option>relationship</option><option>symbol</option><option>entity</option><option>uncertainty</option></select></div><div><label for="record-origin">Origin</label><select id="record-origin"><option value="owner_statement">Owner statement</option><option value="source_statement">Exact source statement</option><option value="interpretation">Interpretation</option></select></div><div><label for="record-status">Review status</label><select id="record-status"><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option></select></div></div>
         <label for="record-text">Full wording — preserved as written</label><textarea id="record-text" rows="10" required></textarea>
@@ -25,6 +26,7 @@
         <label for="record-notes">Interpretation / uncertainty notes</label><textarea id="record-notes" rows="4"></textarea>
         <details><summary>Evidence editor</summary><p class="muted">Paste a source-viewer link and choose $content or a field such as memory_text.</p><label for="citation-url">Archive passage link</label><input id="citation-url"><label for="citation-field">Source field</label><input id="citation-field" value="$content"><button id="attach-citation" type="button">Attach evidence passage</button><label for="record-citations">Citations (JSON; Unicode character offsets)</label><textarea id="record-citations" rows="5">[]</textarea></details>
         <div class="source-buttons"><button id="save-record" type="submit">Save new revision</button><button id="select-record" type="button">Select for persona draft</button></div>
+        </fieldset>
       </form>
       <section id="record-evidence"></section>
       <details><summary>Record relationships and contradictions</summary><div id="record-relations"></div><label for="relation-other">Other record ID</label><input id="relation-other"><label for="relation-kind">Relationship</label><select id="relation-kind"><option value="contradicts">Contradicts / remains unresolved</option><option value="supports">Supports</option><option value="related">Related</option></select><label for="relation-note">Explanation</label><textarea id="relation-note" rows="3"></textarea><button id="link-records">Add relationship</button></details>

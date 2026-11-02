@@ -23,6 +23,7 @@ SERVER = '''
 import os
 from pathlib import Path
 import uvicorn
+from unittest.mock import patch
 from app.config import Settings
 from app.inference import ProviderError
 from app.main import create_app
@@ -33,14 +34,38 @@ class Provider:
         if self.calls == 1:
             raise ProviderError('Browser test: simulated provider failure. Your input is saved.')
         return 'Browser test reply. Exact words remain intact.', {'finish_reason': 'stop'}
-app = create_app(Settings(data_dir=Path(os.environ['EZRA_BROWSER_TEST_DATA']),
-                          api_key='test-only', model='browser-test-model'), Provider())
+cloud_url = os.environ.get('EZRA_TEST_POSTGRES_URL', '')
+settings = Settings(data_dir=Path(os.environ['EZRA_BROWSER_TEST_DATA']),
+                    api_key='test-only', model='browser-test-model',
+                    database_url=cloud_url,
+                    supabase_url='https://example.supabase.co' if cloud_url else '',
+                    supabase_key='synthetic-storage-key' if cloud_url else '',
+                    access_token='browser-test-application-password' if cloud_url else '')
+if cloud_url:
+    import sys
+    sys.path.insert(0, 'tests')
+    from test_cloud import MemoryStorage
+    fake = MemoryStorage()
+    with patch('app.main.SupabaseStorage', return_value=fake.client()):
+        app = create_app(settings, Provider())
+else:
+    app = create_app(settings, Provider())
 uvicorn.run(app, host='127.0.0.1', port=int(os.environ['EZRA_BROWSER_TEST_PORT']), log_level='error')
 '''
 
 
 def main():
     repo = Path(__file__).resolve().parents[1]
+    cloud_url = os.environ.get('EZRA_TEST_POSTGRES_URL', '')
+    if cloud_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(cloud_url)
+        if parsed.hostname not in ('localhost', '127.0.0.1') or parsed.path != '/ezra_test':
+            raise RuntimeError('Browser integration resets only the local ezra_test database.')
+        import psycopg
+        with psycopg.connect(cloud_url, autocommit=True) as db:
+            db.execute('DROP SCHEMA IF EXISTS ezra_archive CASCADE')
+            db.execute('DROP SCHEMA IF EXISTS ezra_runtime CASCADE')
     with tempfile.TemporaryDirectory(prefix='ezra-browser-') as directory:
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
@@ -52,7 +77,7 @@ def main():
             base = f'http://127.0.0.1:{port}'
             for _ in range(100):
                 try:
-                    with urlopen(base + '/api/status', timeout=1) as response:
+                    with urlopen(base + '/healthz', timeout=1) as response:
                         if response.status == 200:
                             break
                 except OSError:
@@ -65,6 +90,9 @@ def main():
                 errors = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 page.goto(base)
+                if cloud_url:
+                    page.get_by_label('Application access token', exact=True).fill('browser-test-application-password')
+                    page.get_by_role('button', name='Connect', exact=True).click()
                 page.get_by_text('Inference configured', exact=True).wait_for()
                 page.get_by_role('button', name='New conversation').click()
                 page.get_by_label('WORKING NOTE', exact=True).fill('Keep the exact voice.\nDo not rewrite the supplied beliefs.')
@@ -105,6 +133,8 @@ def main():
                 ])
                 page.get_by_role('button', name='Import files', exact=True).click()
                 expect(page.locator('#archive-count')).to_have_text('3 preserved originals · 0 active imports', timeout=15000)
+                if cloud_url:
+                    for cached in (Path(directory) / 'originals').iterdir(): cached.unlink()
                 page.locator('.source-card').filter(has_text='Voice.md').click()
                 expect(page.locator('#source-name')).to_have_text('Voice.md')
                 page.locator('#source-units pre').first.wait_for()
@@ -144,7 +174,7 @@ def main():
                 page.set_viewport_size({'width': 1440, 'height': 1000})
                 page.get_by_role('link', name='Persona & reconstruction', exact=True).click()
                 page.get_by_label('Title', exact=True).fill('Exact voice exemplar')
-                archive_sources = page.request.get(base + '/api/archive/sources').json()
+                archive_sources = page.request.get(base + '/api/archive/sources', headers={'Authorization': 'Bearer browser-test-application-password'} if cloud_url else {}).json()
                 voice = next(s for s in archive_sources if s['filename'] == 'Voice.md')
                 passage_url = f'/archive.html?source={voice["sha256"]}&run={voice["current_run"]}&unit=1'
                 page.get_by_text('Evidence editor', exact=True).click()
@@ -186,12 +216,18 @@ def main():
                 page.screenshot(path='/tmp/ezra-phase-three-mobile.png', full_page=True)
                 page.get_by_role('button', name='Deactivate persona', exact=True).click()
                 expect(page.locator('#active-persona')).to_have_text('No persona is activated')
+                page.get_by_role('link', name='Source archive', exact=True).click()
+                with page.expect_download() as full_backup:
+                    page.get_by_role('button', name='Full backup', exact=True).click()
+                with zipfile.ZipFile(full_backup.value.path()) as package:
+                    assert 'runtime.sqlite3' in package.namelist()
+                    assert len(json.loads(package.read('manifest.json'))['sources']) == 3
 
                 # Simulate bringing a private backup into a new browser-hosted workspace.
                 fresh = Path(directory) / 'fresh'; fresh.mkdir()
                 with socket.socket() as sock:
                     sock.bind(('127.0.0.1', 0)); restore_port = sock.getsockname()[1]
-                restore_env = dict(env, EZRA_BROWSER_TEST_DATA=str(fresh), EZRA_BROWSER_TEST_PORT=str(restore_port))
+                restore_env = dict(env, EZRA_BROWSER_TEST_DATA=str(fresh), EZRA_BROWSER_TEST_PORT=str(restore_port), EZRA_TEST_POSTGRES_URL='')
                 restore_server = subprocess.Popen([sys.executable, '-c', SERVER], cwd=repo, env=restore_env)
                 restore_base = f'http://127.0.0.1:{restore_port}'
                 for _ in range(100):
