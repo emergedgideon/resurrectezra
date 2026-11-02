@@ -5,19 +5,23 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from app.config import Settings
+from app.config import Settings, ConfigurationError
 
 
 def arguments(environment):
     if environment.get('RENDER') != 'true':
-        raise ValueError('This entrypoint expects Render TLS/proxy ingress. Use the local launcher elsewhere.')
-    if not all(environment.get(name) for name in ('EZRA_DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY')):
-        raise ValueError('Render startup requires Supabase database and private storage configuration. Ephemeral-only startup is refused.')
+        raise ConfigurationError('RENDER must be true for this entrypoint. Use the local launcher outside Render.')
+    missing = [name for name in ('EZRA_DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY') if not environment.get(name, '').strip()]
+    if missing:
+        raise ConfigurationError('Missing Render environment fields: ' + ', '.join(missing) + '. Add values in the service Environment tab.')
     if len(environment.get('EZRA_ACCESS_TOKEN', '')) < 24:
-        raise ValueError('Set a separate EZRA_ACCESS_TOKEN application password of at least 24 characters.')
-    port = int(environment.get('PORT', '8000'))
+        raise ConfigurationError('EZRA_ACCESS_TOKEN must be a separate application password of at least 24 characters. Update it in Render Environment; do not regenerate API keys.')
+    try:
+        port = int(environment.get('PORT', '8000'))
+    except ValueError:
+        raise ConfigurationError('PORT must be a number; remove a custom PORT override to use the platform default.') from None
     if not 1 <= port <= 65535:
-        raise ValueError('Invalid service port.')
+        raise ConfigurationError('PORT must be between 1 and 65535.')
     return [sys.executable, '-m', 'uvicorn', 'app.main:create_app', '--factory', '--host', '0.0.0.0', '--port', str(port), '--proxy-headers', '--forwarded-allow-ips=*']
 
 
@@ -26,8 +30,11 @@ def main():
         argv = arguments(os.environ)
         Settings.from_env()  # Validate without printing credentials.
         os.execv(sys.executable, argv)
+    except ConfigurationError as exc:
+        print('Cloud startup configuration error: ' + str(exc), file=sys.stderr)
+        return 1
     except (ValueError, OSError):
-        print('Cloud startup configuration is incomplete or invalid. Check the private Render environment fields listed in docs/RENDER_SUPABASE.md.', file=sys.stderr)
+        print('Cloud startup could not complete. Check EZRA_DATA_DIR and private Render environment fields; supplied values are hidden.', file=sys.stderr)
         return 1
 
 

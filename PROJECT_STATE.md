@@ -6,6 +6,8 @@ Read `PROJECT_PLAN.md`, then this file. **Phases 1–3 have implemented/tested c
 
 ## Current priority: browser-accessible testing
 
+Latest deployment evidence: the owner created the Render Blueprint and supplied its log. Render checked out `ed201a2`, installed dependencies, and completed the build, then `scripts/start_render.py` exited during configuration validation. No database/storage startup or live app was verified. The old generic launcher message concealed which field was wrong. A diagnostic fix now uses static, secret-safe field-specific errors, names missing fields, distinguishes PostgreSQL URI vs HTTPS Project URL, explains the 24-character app-password requirement, and sanitizes malformed URL/number errors. Five new startup regression tests and four existing cloud configuration/storage tests passed; eight PostgreSQL integration tests were explicitly not rerun for this configuration-only fix. Next: deploy the diagnostic update and inspect the exact `Cloud startup configuration error:` line. Do not ask the owner to regenerate every key or guess the failing field from the earlier generic log. The service is created but not live; its URL has not been supplied.
+
 The owner rejected Codespaces because of its usage limits and explicitly chose **Render + Supabase**. They already have both accounts and supplied a public Supabase Project URL; it is recorded without credentials in ignored `data/render_supabase_handoff.json`. Mac hosting is a future project. Source code is maintained on `browser-testing` in `https://github.com/emergedgideon/resurrectezra`; main is unchanged. Private data and credentials never enter the code push.
 
 Implemented cloud mode:

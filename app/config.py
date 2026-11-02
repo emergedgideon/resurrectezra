@@ -4,6 +4,20 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+class ConfigurationError(ValueError):
+    """Only fixed field names/instructions, never supplied configuration values."""
+
+
+def checked_url(value, field_name):
+    try:
+        parsed = urlparse(value)
+        parsed.hostname
+        parsed.port
+        return parsed
+    except ValueError:
+        raise ConfigurationError(f'{field_name} is not a valid URL. Check its format in Render Environment; values are hidden.') from None
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path = Path('data')
@@ -21,41 +35,47 @@ class Settings:
     storage_bucket: str = 'ezra-private'
 
     def __post_init__(self):
-        parsed = urlparse(self.base_url)
+        parsed = checked_url(self.base_url, 'FEATHERLESS_BASE_URL')
         if parsed.scheme not in ('https', 'http') or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise ValueError('Use an HTTP(S) inference URL without credentials, query, or fragment.')
+            raise ConfigurationError('FEATHERLESS_BASE_URL must be HTTP(S), without credentials, query, or fragment.')
         if parsed.scheme == 'http' and parsed.hostname not in ('localhost', '127.0.0.1', '::1'):
-            raise ValueError('Remote inference requires HTTPS.')
+            raise ConfigurationError('FEATHERLESS_BASE_URL requires HTTPS for remote inference.')
         if self.timeout <= 0 or self.max_output_tokens <= 0 or self.context_characters < 1000:
-            raise ValueError('Invalid inference timeout or context/output budget.')
+            raise ConfigurationError('Check EZRA_INFERENCE_TIMEOUT, EZRA_MAX_OUTPUT_TOKENS, and EZRA_CONTEXT_CHARACTERS: budgets must be positive, context at least 1000.')
         if self.database_url:
-            database = urlparse(self.database_url.replace('[YOUR-PASSWORD]', '').replace('[YOUR_PASSWORD]', ''))
+            database = checked_url(self.database_url.replace('[YOUR-PASSWORD]', '').replace('[YOUR_PASSWORD]', ''), 'EZRA_DATABASE_URL')
             if database.scheme not in ('postgres', 'postgresql') or not database.hostname:
-                raise ValueError('EZRA_DATABASE_URL must be a PostgreSQL connection URL.')
+                raise ConfigurationError('EZRA_DATABASE_URL must be the PostgreSQL connection URI beginning postgresql://, not the HTTPS Project URL.')
             if database.hostname.endswith('.pooler.supabase.com') and database.port == 6543:
-                raise ValueError('Use Supabase Session pooler on port 5432, not Transaction pooler on 6543.')
-            storage = urlparse(self.supabase_url)
+                raise ConfigurationError('EZRA_DATABASE_URL: use Supabase Session pooler on port 5432, not Transaction pooler on 6543.')
+            storage = checked_url(self.supabase_url, 'SUPABASE_URL')
             if storage.scheme != 'https' or not storage.hostname or storage.username or storage.password or storage.query or storage.fragment or storage.path not in ('', '/') or not self.supabase_key:
-                raise ValueError('Cloud database mode also requires HTTPS SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.')
+                raise ConfigurationError('SUPABASE_URL must be the HTTPS Project URL without a path; SUPABASE_SERVICE_ROLE_KEY must also be set.')
             if len(self.access_token) < 24:
-                raise ValueError('Cloud mode requires EZRA_ACCESS_TOKEN of at least 24 characters.')
+                raise ConfigurationError('EZRA_ACCESS_TOKEN must be a separate application password of at least 24 characters.')
         elif self.supabase_url or self.supabase_key or self.database_password:
-            raise ValueError('Supabase storage requires EZRA_DATABASE_URL; partial cloud configuration is refused.')
+            raise ConfigurationError('EZRA_DATABASE_URL is missing; partial cloud configuration is refused.')
         import re
         if not re.fullmatch(r'[a-zA-Z0-9_-]+', self.storage_bucket):
-            raise ValueError('Use a simple private storage bucket name.')
+            raise ConfigurationError('SUPABASE_STORAGE_BUCKET must be a simple bucket name, such as ezra-private.')
 
     @classmethod
     def from_env(cls):
+        try:
+            timeout = float(os.getenv('EZRA_INFERENCE_TIMEOUT', '120'))
+            output = int(os.getenv('EZRA_MAX_OUTPUT_TOKENS', '2048'))
+            context = int(os.getenv('EZRA_CONTEXT_CHARACTERS', '24000'))
+        except ValueError:
+            raise ConfigurationError('EZRA_INFERENCE_TIMEOUT, EZRA_MAX_OUTPUT_TOKENS, and EZRA_CONTEXT_CHARACTERS must contain numbers; values are hidden.') from None
         return cls(
             data_dir=Path(os.getenv('EZRA_DATA_DIR', 'data')).expanduser().resolve(),
             api_key=os.getenv('FEATHERLESS_API_KEY', ''),
             model=os.getenv('FEATHERLESS_MODEL', ''),
             base_url=os.getenv('FEATHERLESS_BASE_URL', 'https://api.featherless.ai/v1'),
             access_token=os.getenv('EZRA_ACCESS_TOKEN', ''),
-            timeout=float(os.getenv('EZRA_INFERENCE_TIMEOUT', '120')),
-            max_output_tokens=int(os.getenv('EZRA_MAX_OUTPUT_TOKENS', '2048')),
-            context_characters=int(os.getenv('EZRA_CONTEXT_CHARACTERS', '24000')),
+            timeout=timeout,
+            max_output_tokens=output,
+            context_characters=context,
             database_url=os.getenv('EZRA_DATABASE_URL', ''),
             database_password=os.getenv('EZRA_DATABASE_PASSWORD', ''),
             supabase_url=os.getenv('SUPABASE_URL', ''),
